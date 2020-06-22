@@ -1,8 +1,5 @@
 #include <BLEDevice.h>
-#include <BLEUtils.h>
 #include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
-#include <BLEAddress.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -21,7 +18,8 @@ char output_buffer[OUTPUT_BUFFER_LENGTH];
 int scanTime = 10; //In seconds
 BLEScan* pBLEScan;
 double temp, hum, pressure, ax, ay, az, voltage;
-unsigned long last = 0L;
+unsigned long lastScan = 0L;
+unsigned long lastPublish = 0L;
 
 WiFiClient wifiClient;
 PubSubClient client(server, 1883, wifiClient);
@@ -52,7 +50,6 @@ int hex2Dec(String hexVal)
   return dec_val;
 }
 
-//Decodes RUUVI raw data and arranges it in an array
 boolean decodeRuuvi(String hex) {
   hum = hex2Dec(hex.substring(6, 8)) * 0.5;
   if (hum < 0.0 || hum > 100.0) {
@@ -123,11 +120,15 @@ void loop() {
   }
 
   unsigned long now = millis();
-  if (now - last > 120000 || last == 0L) {
-    last = now;
+  if (now - lastScan > 120000 || lastScan == 0L) {
+    lastScan = now;
     Serial.println("BLE scanning...");
     pBLEScan->start(scanTime, false);
     pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
+  }
+
+  if (now - lastPublish > 600000) {
+    ESP.restart();
   }
 }
 
@@ -188,6 +189,7 @@ boolean publish(String deviceId) {
 
   root.printTo(output_buffer, OUTPUT_BUFFER_LENGTH);
   if (client.publish(topic.c_str(), output_buffer)) {
+    lastPublish = millis();
     if (DEBUG) {
       Serial.println("Publish OK");
     }
