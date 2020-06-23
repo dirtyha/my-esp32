@@ -20,6 +20,8 @@ BLEScan* pBLEScan;
 double temp, hum, pressure, ax, ay, az, voltage;
 unsigned long lastScan = 0L;
 unsigned long lastPublish = 0L;
+const int wdtTimeout = 30000;  //time in ms to trigger the watchdog
+hw_timer_t *timer = NULL;
 
 WiFiClient wifiClient;
 PubSubClient client(server, 1883, wifiClient);
@@ -92,6 +94,11 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     }
 };
 
+void IRAM_ATTR resetModule() {
+  ets_printf("reboot\n");
+  esp_restart();
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -107,12 +114,19 @@ void setup() {
   pBLEScan->setInterval(100);
   pBLEScan->setWindow(99);  // less or equal setInterval value
 
+  timer = timerBegin(0, 80, true);                  //timer 0, div 80
+  timerAttachInterrupt(timer, &resetModule, true);  //attach callback
+  timerAlarmWrite(timer, wdtTimeout * 1000, false); //set time in us
+  timerAlarmEnable(timer);                          //enable interrupt
+
   if (DEBUG) {
     Serial.println("Setup done");
   }
 }
 
 void loop() {
+
+  timerWrite(timer, 0); //reset timer (feed watchdog)
 
   // check that we are connected
   if (!client.loop()) {
@@ -123,12 +137,12 @@ void loop() {
   if (now - lastScan > 120000 || lastScan == 0L) {
     lastScan = now;
     Serial.println("BLE scanning...");
-    pBLEScan->start(scanTime, false);
+    pBLEScan->start(scanTime);
     pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
   }
 
-  if (now - lastPublish > 600000) {
-    ESP.restart();
+  if (now - lastPublish > 300000) {
+    resetModule();
   }
 }
 
