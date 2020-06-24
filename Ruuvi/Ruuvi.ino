@@ -141,6 +141,7 @@ void loop() {
     pBLEScan->clearResults();   // delete results fromBLEScan buffer to release memory
   }
 
+  now = millis();
   if (now - lastPublish > 300000) {
     resetModule();
   }
